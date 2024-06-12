@@ -8,8 +8,6 @@ const serviceSchema = new mongoose.Schema({
     price: {
         type: Number,
         required: true,
-        get: getPrice,
-        set: setPrice,
         validate: {
             validator: Number.isInteger,
             message: '{VALUE} is not an integer value'
@@ -25,12 +23,5 @@ const serviceSchema = new mongoose.Schema({
     }
 });
 
-function getPrice(num) {
-    return `$${(num / 100).toFixed(2)}`;
-}
-
-function setPrice(num) {
-    return num * 100;
-}
 
 module.exports = mongoose.model('Service', serviceSchema);

@@ -2,25 +2,53 @@ const bcrypt = require('bcryptjs');
 const moment = require('moment');
 const { User, Barber } = require('../models/User');
 const Availability = require('../models/BarberAvailability');
+const Service = require('../models/Service');
 
 class BarberClass {
-    constructor(id, fullName) {
-        this.id = id;
+    constructor({ fullName, email, phoneNumber, password, admin, headShot, agreeToSms, verified }) {
         this.fullName = fullName;
+        this.email = email;
+        this.phoneNumber = phoneNumber;
+        this.password = password;
+        this.admin = admin;
+        this.headShot = headShot;
+        this.agreeToSms = agreeToSms;
+        this.verified = verified;
     }
 
     static async findOne() {
         const barberData = await User.findOne({ role: 'Barber' });
         if (barberData) {
-            return new BarberClass(barberData._id, barberData.fullName);
+            return new BarberClass(barberData);
         } else {
             throw new Error('Barber not found.');
+        }
+    }
+
+    async save() {
+        let barber = await User.findOne({ email: this.email });
+        if (!barber) {
+            const hashedPassword = await bcrypt.hash(this.password, 10);
+            barber = new User({
+                fullName: this.fullName,
+                email: this.email,
+                phoneNumber: this.phoneNumber,
+                password: hashedPassword,
+                admin: this.admin,
+                headShot: this.headShot,
+                agreeToSms: this.agreeToSms,
+                verified: this.verified
+            });
+            await barber.save();
+            console.log('Temporary barber created:', barber);
+        } else {
+            console.log('Temporary barber already exists:', barber);
         }
     }
 }
 
 class AvailabilityClass {
-    constructor(barberId, date, start, end) {
+    constructor({ barberId, date, start, end }) {
         this.barber = barberId;
         this.date = date;
         this.start = start;
@@ -48,6 +76,29 @@ class AvailabilityClass {
     }
 }
 
+class ServiceClass {
+    constructor({ name, price, duration }) {
+        this.name = name;
+        this.price = price;
+        this.duration = duration;
+    }
+
+    static async addServices() {
+        const services = [
+            { name: "Kids Haircut", price: 15, duration: 30 },
+            { name: "Haircut with Enhancements", price: 35, duration: 45 },
+            { name: "Haircut without Enhancements", price: 30, duration: 30 }
+        ];
+
+        try {
+            await Service.insertMany(services);
+            console.log('Services added successfully');
+        } catch (err) {
+            console.error('Failed to add services', err.message);
+        }
+    }
+}
+
 class DatabaseFiller {
     async fillAvailabilityDatabase() {
         try {
@@ -65,12 +116,12 @@ class DatabaseFiller {
                         let start = thisDay.clone().add(i, 'hours'); // Start time at ith hour in UTC
                         let end = start.clone().add(1, 'hours'); // End time at (i+1)th hour in UTC
 
-                        const availabilityToAdd = new AvailabilityClass(
-                            barber.id,
-                            thisDay.toDate(), // Convert to JavaScript Date object
-                            start.toDate(), // Convert to JavaScript Date object
-                            end.toDate() // Convert to JavaScript Date object
-                        );
+                        const availabilityToAdd = new AvailabilityClass({
+                            barberId: barber._id,
+                            date: thisDay.toDate(), // Convert to JavaScript Date object
+                            start: start.toDate(), // Convert to JavaScript Date object
+                            end: end.toDate() // Convert to JavaScript Date object
+                        });
 
                         await availabilityToAdd.save();
                     }
@@ -83,33 +134,25 @@ class DatabaseFiller {
             console.error('Error filling availability database:', error.message);
         }
     }
-}
 
-async function addTempBarberAndFillAvailability() {
-    const barberData = {
-        fullName: 'Miguel Rodriguez',
-        email: 'miguel.rodriguez@example.com',
-        phoneNumber: '1234567890',
-        password: await bcrypt.hash('Password123!', 10),
-        admin: false,
-        headShot: 'https://randomuser.me/api/portraits/men/75.jpg',
-        agreeToSms: true,
-        verified: true
-    };
+    async addTempBarberAndFillAvailability() {
+        const barberData = {
+            fullName: 'Miguel Rodriguez',
+            email: 'miguel.rodriguez@example.com',
+            phoneNumber: '1234567890',
+            password: 'Password123!',
+            admin: false,
+            headShot: 'https://randomuser.me/api/portraits/men/75.jpg',
+            agreeToSms: true,
+            verified: true
+        };
 
-    let barber = await User.findOne({ email: barberData.email });
-    if (!barber) {
-        barber = new Barber(barberData);
+        const barber = new BarberClass(barberData);
         await barber.save();
-        console.log('Temporary barber created:', barber);
-    } else {
-        console.log('Temporary barber already exists:', barber);
-    }
 
-    const databaseFiller = new DatabaseFiller();
-    await databaseFiller.fillAvailabilityDatabase();
+        await this.fillAvailabilityDatabase();
+        await ServiceClass.addServices();
+    }
 }
 
-module.exports = {
-    addTempBarberAndFillAvailability
-};
+module.exports = new DatabaseFiller();

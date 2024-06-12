@@ -3,9 +3,11 @@ const cors = require('cors');
 require('dotenv').config();
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
+const servicesRoutes = require('./routes/servicesRoutes');
+const barbersRoutes = require('./routes/barbersRoutes');
+const availabilityRoutes = require('./routes/availabilityRoutes');
 const SessionManager = require('./services/SessionManager');
-// const smsRoutes = require('./routes/smsRoutes');
-const { addTempBarberAndFillAvailability } = require('./services/DatabaseFiller');
+const DatabaseFiller = require('./services/DatabaseFiller');
 
 const app = express();
 
@@ -23,7 +25,7 @@ const initServer = async () => {
             process.env.PRODUCTION_CLIENT_URL,
             process.env.CLIENT_URL,
             process.env.STAGGING_CLIENT_URL,
-            'http://localhost:3000'
+            'http://localhost:3000' 
         ];
 
         app.use(cors({
@@ -43,10 +45,12 @@ const initServer = async () => {
 
         // Routes
         app.use('/auth', authRoutes);
-        // app.use('/sms', smsRoutes);
+        app.use('/services', servicesRoutes);
+        app.use('/barbers', barbersRoutes);
+        app.use('/availability', availabilityRoutes);
 
         // Fill database with temporary barber and availability
-        await addTempBarberAndFillAvailability();
+        // await DatabaseFiller.addTempBarberAndFillAvailability();
 
         // Start server
         const PORT = process.env.PORT || 5000;
