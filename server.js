@@ -8,6 +8,7 @@ const barbersRoutes = require('./routes/barbersRoutes');
 const availabilityRoutes = require('./routes/availabilityRoutes');
 const SessionManager = require('./services/SessionManager');
 const DatabaseFiller = require('./services/DatabaseFiller');
+const path = require("path");
 
 const app = express();
 
@@ -25,7 +26,7 @@ const initServer = async () => {
             process.env.PRODUCTION_CLIENT_URL,
             process.env.CLIENT_URL,
             process.env.STAGGING_CLIENT_URL,
-            'http://localhost:3000' 
+            'http://localhost:3000', 'http://localhost:3001'  
         ];
 
         app.use(cors({
@@ -44,6 +45,7 @@ const initServer = async () => {
         app.use(express.json());
 
         // Routes
+        app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
         app.use('/auth', authRoutes);
         app.use('/services', servicesRoutes);
         app.use('/barbers', barbersRoutes);
