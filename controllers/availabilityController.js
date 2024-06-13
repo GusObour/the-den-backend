@@ -10,7 +10,10 @@ class AvailabilityController {
 
         try {
             const availability = await Availability.find({ barber: barberId, date: new Date(date) });
-            res.json(availability);
+
+            const filteredAvailability = availability.filter(item => item.appointment === null && item.locked === false);
+
+            res.json(filteredAvailability);
         } catch (error) {
             console.error('Error fetching availability:', error);
             res.status(500).json({ message: 'Error fetching availability' });

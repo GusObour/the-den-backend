@@ -95,6 +95,7 @@ class AuthController {
         phoneNumber,
         headShot: headShot ? headShot : avatarUrl,
         agreeToSms,
+        role: "User",
       });
 
       await user.save();
@@ -135,11 +136,12 @@ class AuthController {
       return res.json({
         token,
         user: {
+          _id: user._id,
           admin: user.admin,
           phoneNumber: user.phoneNumber,
           fullName: user.fullName,
           email: user.email,
-          headShot: `${process.env.BASE_URL}/${user.headShot}`,
+          headShot: `${process.env.SERVER_URL}/${user.headShot}`,
         },
       });
     } catch (err) {

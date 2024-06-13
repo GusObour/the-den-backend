@@ -26,11 +26,12 @@ const appointmentSchema = new mongoose.Schema({
     },
     barber: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User', // Change from 'Barber' to 'User' to match the unified User model
+        ref: 'Barber',
         required: true
     },
     service: {
-        type: String,
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Service',
         required: true
     },
     status: {
@@ -39,9 +40,6 @@ const appointmentSchema = new mongoose.Schema({
         default: "Pending",
         enum: ["Pending", "Booked", "Completed", "Cancelled"]
     },
-    notes: {
-        type: String
-    }
 });
 
 module.exports = mongoose.model('Appointment', appointmentSchema);
