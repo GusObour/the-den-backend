@@ -20,6 +20,9 @@ const serviceSchema = new mongoose.Schema({
             validator: number => number > 0,
             message: '{VALUE} is not a positive number'
         }
+    },
+    description:{
+        type: String,
     }
 });
 

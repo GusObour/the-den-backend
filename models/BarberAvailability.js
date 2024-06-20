@@ -33,12 +33,17 @@ const barberAvailabilitySchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    lockedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
     lockExpiration: {
         type: Date,
         default: null,
         get: v => new Date(v).toISOString(),
         set: v => new Date(v).toISOString()
     }
-});
+}, { versionKey: '__v' });
 
 module.exports = mongoose.model('BarberAvailability', barberAvailabilitySchema);

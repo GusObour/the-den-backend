@@ -70,6 +70,14 @@ const baseUserSchema = new mongoose.Schema({
             type: Date,
             default: null
         }
+    },
+    lockCount: {
+        type: Number,
+        default: 0
+    },
+    lockTimestamp: {
+        type: Date,
+        default: Date.now
     }
 }, options);
 

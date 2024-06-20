@@ -5,7 +5,7 @@ const Availability = require('../models/BarberAvailability');
 const Service = require('../models/Service');
 
 class BarberClass {
-    constructor({ fullName, email, phoneNumber, password, admin, headShot, agreeToSms, verified }) {
+    constructor({ fullName, email, phoneNumber, password, admin, headShot, agreeToSms, verified, _id }) {
         this.fullName = fullName;
         this.email = email;
         this.phoneNumber = phoneNumber;
@@ -14,6 +14,7 @@ class BarberClass {
         this.headShot = headShot;
         this.agreeToSms = agreeToSms;
         this.verified = verified;
+        this._id = _id;
     }
 
     static async findOne() {
@@ -85,9 +86,12 @@ class ServiceClass {
 
     static async addServices() {
         const services = [
-            { name: "Kids Haircut", price: 15, duration: 30 },
-            { name: "Haircut with Enhancements", price: 35, duration: 45 },
-            { name: "Haircut without Enhancements", price: 30, duration: 30 }
+            {name: 'The Basics', price:40, duration: 30, description: 'A simple haircut with a line up.'},
+            {name: 'The Executive', price:45, duration: 45, description: 'A haircut with line up, bread trim/shave & enhancements.'},
+            {name: 'The V.I.P', price:50, duration: 60, description: 'A haircut with line up, steam + hot towel, bread trim/shave & enhancements.'},
+            {name: 'The Kids Cut 5 - 17', price:30, duration: 30, description: 'A simple haircut with a line up for kids.'},
+            {name: 'senior Cut 65+', price:30, duration: 30, description: 'A simple haircut with a line up for seniors.'},
+            {name: 'The Beard Trim / line up', price:25, duration: 15, description: 'A simple beard trim.'}
         ];
 
         try {
@@ -136,22 +140,22 @@ class DatabaseFiller {
     }
 
     async addTempBarberAndFillAvailability() {
-        const barberData = {
-            fullName: 'Miguel Rodriguez',
-            email: 'miguel.rodriguez@example.com',
-            phoneNumber: '1234567890',
-            password: 'Password123!',
-            admin: false,
-            headShot: 'https://randomuser.me/api/portraits/men/75.jpg',
-            agreeToSms: true,
-            verified: true
-        };
+        // const barberData = {
+        //     fullName: 'Miguel Rodriguez',
+        //     email: 'miguel.rodriguez@example.com',
+        //     phoneNumber: '1234567890',
+        //     password: 'Password123!',
+        //     admin: false,
+        //     headShot: 'https://randomuser.me/api/portraits/men/75.jpg',
+        //     agreeToSms: true,
+        //     verified: true
+        // };
 
-        const barber = new BarberClass(barberData);
-        await barber.save();
+        // const barber = new BarberClass(barberData);
+        // await barber.save();
 
         await this.fillAvailabilityDatabase();
-        await ServiceClass.addServices();
+        // await ServiceClass.addServices();
     }
 }
 

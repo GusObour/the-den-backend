@@ -58,4 +58,6 @@ router.post('/logout', AuthController.logout);
 // Get Session Route
 router.get('/session', AuthController.getSession);
 
+router.post('refresh-token', AuthController.refreshToken)
+
 module.exports = router;

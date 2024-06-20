@@ -116,8 +116,7 @@ class AuthController {
     const { email, password } = req.body;
 
     try {
-      const user =
-        (await User.findOne({ email })) || (await Barber.findOne({ email }));
+      const user = await User.findOne({ email }) || await Barber.findOne({ email });
       if (!user) {
         return res.status(400).json({ message: "Invalid credentials" });
       }
@@ -127,22 +126,20 @@ class AuthController {
         return res.status(400).json({ message: "Invalid credentials" });
       }
 
-      const token = jwt.sign(
-        { userId: user._id, admin: user.admin },
-        process.env.SESSION_SECRET,
-        { expiresIn: "1h" }
-      );
+      const token = jwt.sign({
+        _id: user._id,
+        admin: user.admin,
+        phoneNumber: user.phoneNumber,
+        fullName: user.fullName,
+        email: user.email,
+        headShot: `${process.env.SERVER_URL}/${user.headShot}`,
+      }, process.env.SESSION_SECRET, { expiresIn: "1h" });
+      const refreshToken = jwt.sign({ userId: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: "7d" });
+
+      res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: true });
 
       return res.json({
         token,
-        user: {
-          _id: user._id,
-          admin: user.admin,
-          phoneNumber: user.phoneNumber,
-          fullName: user.fullName,
-          email: user.email,
-          headShot: `${process.env.SERVER_URL}/${user.headShot}`,
-        },
       });
     } catch (err) {
       console.error(err);
@@ -223,6 +220,42 @@ class AuthController {
       }
       res.json({ message: "Logged out successfully" });
     });
+  }
+
+  async refreshToken(req, res) {
+    const { refreshToken } = req.cookies;
+
+    if (!refreshToken) {
+      return res.status(401).json({ message: 'No token, authorization denied' });
+    }
+
+    try {
+      const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+      const user = await User.findById(decoded.userId);
+      if (!user) {
+        return res.status(401).json({ message: 'User not found' });
+      }
+
+      const newAccessToken = jwt.sign(
+        {
+          user: {
+            _id: user._id,
+            admin: user.admin,
+            phoneNumber: user.phoneNumber,
+            fullName: user.fullName,
+            email: user.email,
+            headShot: `${process.env.SERVER_URL}/${user.headShot}`,
+          },
+        },
+        process.env.SESSION_SECRET,
+        { expiresIn: "1h" }
+      );
+
+      return res.json({ token: newAccessToken });
+    } catch (err) {
+      console.error('Token verification error:', err);
+      res.status(401).json({ message: 'Token is not valid' });
+    }
   }
 
   async getSession(req, res) {
