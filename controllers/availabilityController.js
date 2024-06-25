@@ -23,26 +23,34 @@ class AvailabilityController {
         }
     }
 
-    async getBarberAvailability(barberId) {
+    async getBarberAvailability(barberId, req, cacheExpiry = 3600) {
+        const redisClient = req.redisClient;
+        const cacheKey = `barberAppointments:${barberId}`;
+      
         try {
-            const availability = await Availability.find({
-                barber: barberId,
-                appointment: null,
-                locked: false
-            }).populate('barber', '_id fullName');
-
-
-            if (availability.length > 0) {
-                return { success: true, availability };
-            } else {
-                return { success: false, message: 'No availability found' };
-            }
+          const cachedData = await redisClient.get(cacheKey);
+      
+          if (cachedData) {
+            return { success: true, availability: JSON.parse(cachedData) };
+          }
+      
+          const availability = await Availability.find({
+            barber: barberId,
+            appointment: null,
+            locked: false,
+          }).populate('barber', '_id fullName');
+      
+          if (availability.length > 0) {
+            await redisClient.set(cacheKey, JSON.stringify(availability), 'EX', cacheExpiry);
+            return { success: true, availability };
+          } else {
+            return { success: false, message: 'No availability found' };
+          }
         } catch (error) {
-            console.error('Error fetching availability:', error);
-            return { success: false, message: 'Error fetching availability' };
+          console.error('Error fetching availability:', error);
+          return { success: false, message: 'Error fetching availability' };
         }
-    }
-
+      }
 }
 
 module.exports = new AvailabilityController();

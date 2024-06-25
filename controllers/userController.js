@@ -15,7 +15,7 @@ class UserController{
         }
 
         try {
-            const results = await BookingController.getUserAppointments(userId);
+            const results = await BookingController.getUserAppointments(userId, req);
             if (!results.success) {
                 return res.status(500).json({ success: false, message: 'Error fetching appointments' });
             }
@@ -36,7 +36,8 @@ class UserController{
         }
 
         try {
-            const results = await BookingController.cancelAppointment(appointmentId);
+            console.log()
+            const results = await BookingController.cancelAppointment(appointmentId, userId, req);
             if (!results.success) {
                 return res.status(500).json({ success: false, message: results.message });
             }

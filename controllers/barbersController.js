@@ -35,7 +35,7 @@ class BarbersController {
     }
 
     try {
-      const results = await BookingController.getBarberAppointments(barberId);
+      const results = await BookingController.getBarberAppointments(barberId,req);
       if (!results.success) {
         return res.status(500).json({ success: false, message: 'Error fetching appointments' });
       }
@@ -56,7 +56,7 @@ class BarbersController {
     }
 
     try {
-      const results = await AvailabilityController.getBarberAvailability(barberId);
+      const results = await AvailabilityController.getBarberAvailability(barberId, req);
 
       if (results.success) {
         return res.json({ availability: results.availability });
@@ -82,7 +82,7 @@ class BarbersController {
     }
 
     try {
-      const results = await BookingController.cancelAppointment(appointmentId, userId);
+      const results = await BookingController.cancelAppointment(appointmentId, userId, req);
       if (results.success) {
         return res.json({ success: true, message: results.message });
       } else {
