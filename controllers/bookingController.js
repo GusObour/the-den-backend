@@ -217,48 +217,6 @@ class BookingController {
 
 
 
-//   async getUserAppointments(userId, req) {
-//     const redisClient = req.redisClient;
-//     const cacheKey = `userAppointments:${userId}`;
-//     const cachedData = await redisClient.get(cacheKey);
-
-//     if (cachedData) {
-//       return { appointments: JSON.parse(cachedData), success: true };
-//     }
-
-//     try {
-//       const appointments = await Appointment.find({ user: userId })
-//         .populate("barber")
-//         .populate("service")
-//         .populate("barberAvailability");
-
-//       const returnedAppointments = appointments.map((appointment) => {
-//         return {
-//           _id: appointment._id,
-//           barber: {
-//             _id: appointment.barber._id,
-//             fullName: appointment.barber.fullName,
-//           },
-//           service: appointment.service.name,
-//           date: appointment.barberAvailability.date,
-//           start: appointment.barberAvailability.start,
-//           end: appointment.barberAvailability.end,
-//           status: appointment.status,
-//         };
-//       });
-
-//       await redisClient.set(
-//         cacheKey,
-//         JSON.stringify(returnedAppointments),
-//         3600
-//       ); // Cache for 1 hour
-
-//       return { appointments: returnedAppointments, success: true };
-//     } catch (error) {
-//       console.error("Error fetching appointments:", error);
-//       return { success: false, message: "Error fetching appointments" };
-//     }
-//   }
 
   async updateExpiredAppointments() {
     const now = new Date();
@@ -281,6 +239,55 @@ class BookingController {
       console.error("Error updating expired appointments:", error);
     }
   }
+
+  async completeAppointment(appointmentId, userId, req) {
+    const redisClient = req.redisClient;
+    const session = await mongoose.startSession();
+    session.startTransaction();
+  
+    try {
+      const appointment = await Appointment.findById(appointmentId)
+        .populate("user")
+        .populate("barber")
+        .populate("service")
+        .populate("barberAvailability")
+        .session(session);
+  
+      if (!appointment) {
+        await session.abortTransaction();
+        return { success: false, message: "Appointment not found" };
+      }
+  
+      if (appointment.status !== "Booked") {
+        await session.abortTransaction();
+        return { success: false, message: "Appointment is not booked" };
+      }
+  
+      if (appointment.barber._id.toString() !== userId) {
+        await session.abortTransaction();
+        return { success: false, message: "Unauthorized to complete appointment" };
+      }
+  
+      appointment.status = "Completed";
+      await appointment.save({ session });
+  
+      await redisClient.del(`barberAppointments:${userId}`);
+      await redisClient.del(`userAppointments:${appointment.user._id}`);
+  
+      await session.commitTransaction();
+  
+      // TO-DO: Notify user about the completion
+  
+      return { success: true, message: "Appointment completed successfully" };
+    } catch (error) {
+      await session.abortTransaction();
+      console.error("Error completing appointment:", error);
+      return { success: false, message: "Error completing appointment", error: error.message };
+    } finally {
+      session.endSession();
+    }
+  }
+  
 
   async cancelAppointment(appointmentId, userId, req) {
     const redisClient = req.redisClient;
@@ -318,8 +325,8 @@ class BookingController {
         await barberAvailability.save({ session });
       }
 
-      await redisClient.del(`barberAppointments:${appointment.barber}`);
-      await redisClient.del(`userAppointments:${appointment.user}`);
+      await redisClient.del(`barberAppointments:${appointment.barber._id}`);
+      await redisClient.del(`userAppointments:${appointment.user._id}`);
 
       await session.commitTransaction();
 

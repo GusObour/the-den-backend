@@ -14,7 +14,6 @@ cron.schedule('*/5 * * * *', () => {
     bookingController.updateExpiredAppointments();
 });
 
-// Schedule to generate and send invoices every week
 cron.schedule('0 0 * * 0', async () => {
     console.log('Generating and sending weekly invoices...');
     const barbers = await User.find({ role: 'Barber' });

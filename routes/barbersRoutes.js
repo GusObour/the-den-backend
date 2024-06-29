@@ -23,10 +23,18 @@ router.get(
     BarbersController.getBarberAvailability
 );
 
-router.delete('/cancel-appointment', authMiddleware.authenticate, 
-[
-    check('appointmentId').not().isEmpty().withMessage('Appointment ID is required')
-],
-BarbersController.cancelAppointment)
+router.delete('/cancel-appointment/:appointmentId/:userId', authMiddleware.authenticate,
+    [
+        check('appointmentId').not().isEmpty().withMessage('Appointment ID is required'),
+        check('userId').not().isEmpty().withMessage('User ID is required')
+    ],
+    BarbersController.cancelAppointment);
+
+router.put('/complete-appointment/:appointmentId/:userId', authMiddleware.authenticate,
+    [
+        check('appointmentId').not().isEmpty().withMessage('Appointment ID is required'),
+        check('userId').not().isEmpty().withMessage('Barber ID is required')
+    ],
+    BarbersController.completeAppointment);
 
 module.exports = router;

@@ -112,20 +112,20 @@ class AuthController {
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
-
+  
     const { email, password } = req.body;
-
+  
     try {
       const user = await User.findOne({ email }) || await Barber.findOne({ email });
       if (!user) {
         return res.status(400).json({ message: "Invalid credentials" });
       }
-
+  
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
         return res.status(400).json({ message: "Invalid credentials" });
       }
-
+  
       const token = jwt.sign({
         _id: user._id,
         admin: user.admin,
@@ -134,13 +134,12 @@ class AuthController {
         email: user.email,
         headShot: `${process.env.SERVER_URL}/${user.headShot}`,
       }, process.env.SESSION_SECRET, { expiresIn: "1h" });
+  
       const refreshToken = jwt.sign({ userId: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: "7d" });
-
+  
       res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: true });
-
-      return res.json({
-        token,
-      });
+  
+      return res.json({ token });
     } catch (err) {
       console.error(err);
       return res.status(500).json({ message: "Server error" });

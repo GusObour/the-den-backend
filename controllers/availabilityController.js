@@ -25,7 +25,7 @@ class AvailabilityController {
 
     async getBarberAvailability(barberId, req, cacheExpiry = 3600) {
         const redisClient = req.redisClient;
-        const cacheKey = `barberAppointments:${barberId}`;
+        const cacheKey = `barberAvailability:${barberId}`;
       
         try {
           const cachedData = await redisClient.get(cacheKey);

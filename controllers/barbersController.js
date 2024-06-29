@@ -75,9 +75,8 @@ class BarbersController {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { appointmentId } = req.query;
-    const {userId} = req.data
-    if (!appointmentId) {
+    const { appointmentId, userId } = req.params;
+    if (!appointmentId || !userId) {
       return res.status(400).json({ success: false, message: 'Appointment ID is required' });
     }
 
@@ -91,6 +90,30 @@ class BarbersController {
     } catch (error) {
       console.error('Error cancelling appointment:', error);
       return res.status(500).json({ success: false, message: 'Error cancelling appointment' });
+    }
+  }
+
+  async completeAppointment(req, res) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { appointmentId, userId } = req.params;
+    if (!appointmentId || !userId) {
+      return res.status(400).json({ success: false, message: 'Appointment, user, amd barber IDs are required' });
+    }
+
+    try {
+      const results = await BookingController.completeAppointment(appointmentId, userId, req);
+      if (results.success) {
+        return res.json({ success: true, message: results.message });
+      } else {
+        return res.status(404).json({ success: false, message: results.message });
+      }
+    } catch (error) {
+      console.error('Error completing appointment:', error);
+      return res.status(500).json({ success: false, message: 'Error completing appointment' });
     }
   }
 
