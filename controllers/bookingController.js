@@ -1,47 +1,47 @@
 const mongoose = require("mongoose");
+const { ObjectId } = mongoose.Types;
 const Appointment = require("../models/Appointment");
 const BarberAvailability = require("../models/BarberAvailability");
 const redisClientInstance = require("../services/RedisClientService");
 const TwilioService = require("../services/TwilioService");
-const GoogleCalendarService = require("../services/GoogleCalendarService");
+const EmailService = require('../services/EmailService');
+const GoogleCalendarService = require('../services/GoogleCalendarService');
 const { User, Barber } = require("../models/User");
 const Service = require("../models/Service");
 const moment = require("moment");
 
 class BookingController {
-  constructor() {}
-  async createAppointment(req, res) {
+  async createAppointment(req, state, tokens) {
     const redisClient = req.redisClient;
-    const { date, start, end, barberId, userId, serviceId } = req.body;
+    const { userId, barberId, serviceId, date, start, end, } = state;
+    const session = await mongoose.startSession();
 
-    const MAX_RETRIES = 3; // Maximum number of retries to book an appointment
+    const MAX_RETRIES = 5
+
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      const session = await mongoose.startSession();
-      session.startTransaction();
-
       try {
+        session.startTransaction();
+
         const availability = await BarberAvailability.findOne({
-          barber: barberId,
+          barber: ObjectId(barberId),
           date: new Date(date),
           start: new Date(start),
           end: new Date(end),
           appointment: null,
           locked: true,
-          lockedBy: userId,
+          lockedBy: ObjectId(userId),
           lockExpiration: { $gte: new Date() },
-        });
+        }).session(session);
 
         if (!availability) {
           await session.abortTransaction();
-          return res
-            .status(400)
-            .json({ message: "Appointment slot is no longer available" });
+          return ({ message: "Appointment slot is no longer available" });
         }
 
         const appointment = new Appointment({
-          user: userId,
-          barber: barberId,
-          service: serviceId,
+          user: ObjectId(userId),
+          barber: ObjectId(barberId),
+          service: ObjectId(serviceId),
           status: "Booked",
           barberAvailability: availability._id,
         });
@@ -62,8 +62,38 @@ class BookingController {
           console.error("Error invalidating cache:", cacheError);
         }
 
+        // Fetch barber, user, and service details
+        const [barber, user, service] = await Promise.all([
+          Barber.findById(barberId).session(session),
+          User.findById(userId).session(session),
+          Service.findById(serviceId).session(session)
+        ]);
+
+        // Use Google Calendar Service
+        GoogleCalendarService.setCredentials(tokens);
+        const event = await GoogleCalendarService.createEvent({
+          summary: 'Appointment Booking',
+          description: `Service: ${service.name}\nDetails about the appointment`,
+          start: new Date(start).toISOString(),
+          end: new Date(end).toISOString(),
+          attendees: [barberEmail, userEmail],
+        });
+
+        // Include the calendar link in the email
+        const appointmentDetails = {
+          date,
+          start,
+          end,
+          barber: barber.fullName,
+          user: user.fullName,
+          service: serviceDetails,
+          calendarLink: event.htmlLink,
+        };
+
+        await EmailService.sendBookingEmail(barber.email, user.email, appointmentDetails);
+
         await session.commitTransaction();
-        return res.status(201).json({
+        return ({
           success: true,
           message: "Appointment booked successfully",
           appointment,
@@ -71,38 +101,54 @@ class BookingController {
       } catch (error) {
         if (error.code === 112 && attempt < MAX_RETRIES - 1) {
           console.warn(
-            `Write conflict detected, retrying operation (attempt ${
-              attempt + 1
+            `Write conflict detected, retrying operation (attempt ${attempt + 1
             })...`
           );
           await session.abortTransaction();
-          continue;
+          await new Promise(resolve => setTimeout(resolve, 100)); // Shorter retry interval
         } else {
           console.error("Error creating appointment:", error);
           await session.abortTransaction();
-          return res
-            .status(500)
-            .json({ message: "Error creating appointment" });
+          return ({ message: "Error creating appointment" });
         }
       } finally {
         session.endSession();
       }
     }
 
-    return res.status(500).json({
+    return ({
       message:
         "Failed to create appointment after multiple attempts. Please try again later.",
     });
   }
 
-  async unlockExpiredSlots() {
+  async unlockExpiredSlots(redisClient) {
     const now = new Date();
+
+    // Fetch barber IDs associated with the expired slots
+    const expiredSlots = await BarberAvailability.find(
+      { locked: true, lockExpiration: { $lt: now } },
+      'barber'
+    );
+
+    const barberIds = expiredSlots.map(slot => slot.barber.toString());
+
+    // Update the expired slots
     const results = await BarberAvailability.updateMany(
       { locked: true, lockExpiration: { $lt: now } },
       { $set: { locked: false, lockExpiration: null, lockedBy: null } }
     );
 
     console.log(`unlocked ${results.nModified} expired slots`);
+
+    // Delete caches for the relevant barbers
+    const uniqueBarberIds = [...new Set(barberIds)];
+
+    for (const barberId of uniqueBarberIds) {
+      const cacheKey = `barberAvailability:${barberId}`;
+      await redisClient.del(cacheKey);
+      console.log(`Cache cleared for barber ID: ${barberId}`);
+    }
   }
 
 
@@ -134,7 +180,7 @@ class BookingController {
   }
 
   // Retrieves barber appointments, utilizing caching for performance
-  async getBarberAppointments(barberId, req, cacheExpiry = 3600) {
+  async getBarberAppointments(barberId, req, cacheExpiry = 600) {
     const redisClient = req.redisClient;
     const cacheKey = `barberAppointments:${barberId}`;
 
@@ -145,7 +191,7 @@ class BookingController {
         return { appointments: JSON.parse(cachedData), success: true };
       }
 
-      const appointments = await Appointment.find({ barber: barberId })
+      const appointments = await Appointment.find({ barber: barberId, status: { $nin: ["Completed", "Cancelled"] } })
         .populate("user")
         .populate("service")
         .populate("barberAvailability")
@@ -155,9 +201,9 @@ class BookingController {
         const basicInfo = this.constructBasicAppointmentInfo(appointment);
         return appointment.barberAvailability
           ? this.addAppointmentAvailabilityDetails(
-              basicInfo,
-              appointment.barberAvailability
-            )
+            basicInfo,
+            appointment.barberAvailability
+          )
           : basicInfo;
       });
 
@@ -182,69 +228,89 @@ class BookingController {
   }
 
 
-  async  getUserAppointments(userId, req, cacheExpiry = 3600) {
+  async getUserAppointments(userId, req, cacheExpiry = 600) {
     const redisClient = req.redisClient;
     const cacheKey = `userAppointments:${userId}`;
-  
+
     try {
       const cachedData = await redisClient.get(cacheKey);
-  
+
       if (cachedData) {
         return { appointments: JSON.parse(cachedData), success: true };
       }
-  
-      const appointments = await Appointment.find({ user: userId })
+
+      const appointments = await Appointment.find({ user: userId, status: { $nin: ["Completed", "Cancelled"] } })
         .populate("barber")
         .populate("service")
         .populate("barberAvailability");
-  
+
       const returnedAppointments = appointments.map(appointment => {
         const basicInfo = this.constructBasicAppointmentInfo(appointment);
         return appointment.barberAvailability
           ? this.addAppointmentAvailabilityDetails(basicInfo, appointment.barberAvailability)
           : basicInfo;
       });
-  
-      await redisClient.set(cacheKey, JSON.stringify(returnedAppointments), 'EX', cacheExpiry); // Cache for 1 hour
-  
+
+      await redisClient.set(cacheKey, JSON.stringify(returnedAppointments), 'EX', cacheExpiry);
+
       return { appointments: returnedAppointments, success: true };
     } catch (error) {
       console.error("Error fetching appointments:", error);
       return { success: false, message: "Error fetching appointments" };
     }
   }
-  
 
 
 
 
-  async updateExpiredAppointments() {
+
+  async updateExpiredAppointments(redisClient) {
     const now = new Date();
 
     try {
+      // Fetch barber availabilities that have expired
       const barberAvailabilities = await BarberAvailability.find(
         { end: { $lt: now } },
-        "_id"
+        "_id barber"
       );
-      const availabilityIds = barberAvailabilities.map(
-        (availability) => availability._id
-      );
+
+      const availabilityIds = barberAvailabilities.map(availability => availability._id.toString());
+      const barberIds = barberAvailabilities.map(availability => availability.barber.toString());
+
+      // Update expired appointments
       const results = await Appointment.updateMany(
         { status: "Booked", barberAvailability: { $in: availabilityIds } },
         { $set: { status: "Completed" } }
       );
 
       console.log(`Updated ${results.nModified} expired appointments`);
+
+      // Delete caches for the relevant barbers and availabilities
+      const uniqueBarberIds = [...new Set(barberIds)];
+
+      for (const barberId of uniqueBarberIds) {
+        const cacheKey = `barberAvailability:${barberId}`;
+        await redisClient.del(cacheKey);
+        console.log(`Cache cleared for barber ID: ${barberId}`);
+      }
+
+      for (const availabilityId of availabilityIds) {
+        const cacheKey = `availability:${availabilityId}`;
+        await redisClient.del(cacheKey);
+        console.log(`Cache cleared for availability ID: ${availabilityId}`);
+      }
+
     } catch (error) {
       console.error("Error updating expired appointments:", error);
     }
   }
 
+
   async completeAppointment(appointmentId, userId, req) {
     const redisClient = req.redisClient;
     const session = await mongoose.startSession();
     session.startTransaction();
-  
+
     try {
       const appointment = await Appointment.findById(appointmentId)
         .populate("user")
@@ -252,32 +318,32 @@ class BookingController {
         .populate("service")
         .populate("barberAvailability")
         .session(session);
-  
+
       if (!appointment) {
         await session.abortTransaction();
         return { success: false, message: "Appointment not found" };
       }
-  
+
       if (appointment.status !== "Booked") {
         await session.abortTransaction();
         return { success: false, message: "Appointment is not booked" };
       }
-  
+
       if (appointment.barber._id.toString() !== userId) {
         await session.abortTransaction();
         return { success: false, message: "Unauthorized to complete appointment" };
       }
-  
+
       appointment.status = "Completed";
       await appointment.save({ session });
-  
+
       await redisClient.del(`barberAppointments:${userId}`);
       await redisClient.del(`userAppointments:${appointment.user._id}`);
-  
+
       await session.commitTransaction();
-  
+
       // TO-DO: Notify user about the completion
-  
+
       return { success: true, message: "Appointment completed successfully" };
     } catch (error) {
       await session.abortTransaction();
@@ -287,7 +353,7 @@ class BookingController {
       session.endSession();
     }
   }
-  
+
 
   async cancelAppointment(appointmentId, userId, req) {
     const redisClient = req.redisClient;

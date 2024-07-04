@@ -20,13 +20,17 @@ const authMiddleware = {
       
       next();
     } catch (err) {
+      if (err.name === 'TokenExpiredError') {
+        return res.status(401).json({ message: 'Token has expired' });
+      }
       console.error('Token verification error:', err);
       res.status(401).json({ message: 'Token is not valid' });
     }
   },
 
   refreshToken: async (req, res) => {
-    const refreshToken = req.cookies.refreshToken;
+    const authHeader = req.header('Authorization');
+    const refreshToken = authHeader && authHeader.split(' ')[1];
 
     if (!refreshToken) {
       return res.status(401).json({ message: 'No refresh token, authorization denied' });

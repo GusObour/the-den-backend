@@ -33,6 +33,8 @@ const handleWebSocketMessage = async (ws, data) => {
 
         if (result.message.includes('Lock limit reached')) {
             const lockedSlots = await BarberAvailability.find({ lockedBy: appointmentData.userId });
+            // Do a check if the appointment data is part of the locked slots
+            // if so, we allow the user to proceed with the appointment
             ws.send(JSON.stringify({ action: 'lock_limit_reached', lockedSlots }));
             return;
         }
@@ -61,7 +63,7 @@ const lockAppointment = async (appointmentData) => {
             user.lockTimestamp = now;
         }
 
-        if (user.lockCount >= 3) {
+        if (user.lockCount >= 10) {
             await session.abortTransaction();
             session.endSession();
             return { success: false, message: 'Lock limit reached. Please try again later.' };

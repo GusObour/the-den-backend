@@ -12,7 +12,7 @@ class BarbersController {
           fullName: barber.fullName,
           email: barber.email,
           phoneNumber: barber.phoneNumber,
-          headShot: barber.headShot,
+          headShot: `${process.env.SERVER_URL}/${barber.headShot}`
         }
       });
       res.json(barbersData);

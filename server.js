@@ -1,99 +1,130 @@
+// server.js
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const path = require("path");
+const morgan = require("morgan");
+const logger = require("./services/LoggerService");
 const { initializeWebSocketServer } = require("./services/WebSocketService");
 const connectDB = require("./config/db");
 const RedisClient = require("./services/RedisClientService");
+const JobSchedulerService = require('./services/JobSchedulerService');
+const UnlockExpiredSlotsJob = require('./jobs/UnlockExpiredSlotsJob');
+const UpdateExpiredAppointmentsJob = require('./jobs/UpdateExpiredAppointmentsJob');
+const GenerateWeeklyInvoicesJob = require('./jobs/GenerateWeeklyInvoicesJob');
+const UpdateWeeklyAvailabilityJob = require('./jobs/UpdateWeeklyAvailabilityJob');
+
 const authRoutes = require("./routes/authRoutes");
 const servicesRoutes = require("./routes/servicesRoutes");
 const barbersRoutes = require("./routes/barbersRoutes");
 const availabilityRoutes = require("./routes/availabilityRoutes");
-const bookingRoutes = require("./routes/bookingRoutes");
+// const bookingRoutes = require("./routes/bookingRoutes");
 const statsRoutes = require("./routes/statsRoutes");
 const userRoutes = require("./routes/userRoutes");
+const googleAuthRoutes = require('./routes/googleAuthRoutes');
 const SessionManager = require("./services/SessionManager");
-const DatabaseFiller = require("./services/DatabaseFiller");
+// const startScheduler = require("./services/availabilityScheduler");
 
 const app = express();
 
 const initServer = async () => {
-  try {
-    const mongooseConnection = await connectDB.connect();
+    try {
+        const mongooseConnection = await connectDB.connect();
 
-    const sessionManager = new SessionManager(app, mongooseConnection);
-    sessionManager.initialize();
+        const sessionManager = new SessionManager(app, mongooseConnection);
+        sessionManager.initialize();
 
-    const redisInstance = new RedisClient();
-    await redisInstance.connect();
-    console.log("Redis client is ready to use");
+        const redisInstance = new RedisClient();
+        await redisInstance.connect();
+        logger.info("Redis client is ready to use");
 
-    const allowedOrigins = [
-      process.env.PRODUCTION_CLIENT_URL,
-      process.env.CLIENT_URL,
-      process.env.STAGGING_CLIENT_URL,
-      "http://localhost:3000",
-      "http://localhost:3001",
-    ];
+        const allowedOrigins = [
+            process.env.PRODUCTION_CLIENT_URL,
+            process.env.CLIENT_URL,
+            process.env.STAGGING_CLIENT_URL,
+            "http://localhost:3000",
+            "http://localhost:3001",
+        ];
 
-    app.use(
-      cors({
-        origin: (origin, callback) => {
-          if (!origin) return callback(null, true);
-          if (allowedOrigins.indexOf(origin) === -1) {
-            const msg =
-              "The CORS policy for this site does not allow access from the specified Origin.";
-            return callback(new Error(msg), false);
-          }
-          return callback(null, true);
-        },
-        credentials: true,
-      })
-    );
+        app.use(
+            cors({
+                origin: (origin, callback) => {
+                    if (!origin) return callback(null, true);
+                    if (allowedOrigins.indexOf(origin) === -1) {
+                        const msg =
+                            "The CORS policy for this site does not allow access from the specified Origin.";
+                        return callback(new Error(msg), false);
+                    }
+                    return callback(null, true);
+                },
+                credentials: true,
+            })
+        );
 
-    app.use(express.json());
+        app.use(express.json());
 
-    app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-    app.use("/auth", authRoutes);
-    app.use("/services", servicesRoutes);
-    app.use(
-      "/barbers",
-      (req, res, next) => {
-        req.redisClient = redisInstance.getClient();
-        next();
-      },
-      barbersRoutes
-    );
-    app.use("/availability", availabilityRoutes);
-    app.use(
-      "/book",
-      (req, res, next) => {
-        req.redisClient = redisInstance.getClient();
-        next();
-      },
-      bookingRoutes
-    );
-    app.use("/stats", statsRoutes);
-    app.use(
-      "/user",
-      (req, res, next) => {
-        req.redisClient = redisInstance.getClient();
-        next();
-      },
-      userRoutes
-    );
+        // Morgan middleware for logging HTTP requests
+        app.use(morgan('combined', {
+            stream: {
+                write: (message) => logger.info(message.trim()),
+            },
+        }));
 
-    const PORT = process.env.PORT || 5000;
-    const server = app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
+        app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+        app.use("/auth", authRoutes);
+        app.use("/services", servicesRoutes);
+        app.use(
+            "/barbers",
+            (req, res, next) => {
+                req.redisClient = redisInstance.getClient();
+                next();
+            },
+            barbersRoutes
+        );
+        app.use("/availability",
+            (req, res, next) => {
+                req.redisClient = redisInstance.getClient();
+                next();
+            },
+            availabilityRoutes);
 
-    initializeWebSocketServer(server);
-    await DatabaseFiller.addTempBarberAndFillAvailability();
-  } catch (err) {
-    console.error("Error initializing server", err);
-    process.exit(1);
-  }
+        // app.use(
+        //     "/book",
+        //     (req, res, next) => {
+        //         req.redisClient = redisInstance.getClient();
+        //         next();
+        //     },
+        //     bookingRoutes
+        // );
+        app.use("/stats", statsRoutes);
+        app.use(
+            "/user",
+            (req, res, next) => {
+                req.redisClient = redisInstance.getClient();
+                next();
+            },
+            userRoutes
+        );
+        app.use('/google', googleAuthRoutes);
+
+        const jobScheduler = new JobSchedulerService(redisInstance.getClient());
+        jobScheduler.registerJob('*/5 * * * *', new UnlockExpiredSlotsJob(redisInstance.getClient()));
+        jobScheduler.registerJob('*/5 * * * *', new UpdateExpiredAppointmentsJob(redisInstance.getClient()));
+        jobScheduler.registerJob('0 0 * * 0', new GenerateWeeklyInvoicesJob(redisInstance.getClient()));
+        jobScheduler.registerJob('0 0 * * 0', new UpdateWeeklyAvailabilityJob(redisInstance.getClient()));
+        jobScheduler.start();
+
+        const PORT = process.env.PORT || 5000;
+        const server = app.listen(PORT, () => {
+            logger.info(`Server running on port ${PORT}`);
+        });
+
+        initializeWebSocketServer(server);
+        // startScheduler();
+    } catch (err) {
+        logger.error("Error initializing server", err);
+        process.exit(1);
+    }
 };
 
 initServer();

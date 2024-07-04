@@ -55,9 +55,35 @@ router.put(
 // Logout Route
 router.post('/logout', AuthController.logout);
 
-// Get Session Route
-router.get('/session', AuthController.getSession);
+router.post('/refresh-token', authMiddleware.refreshToken);
 
-router.post('refresh-token', authMiddleware.refreshToken)
+router.put(
+  "/update-profile/:userId",
+  authMiddleware.authenticate,
+  upload.single("headShot"),
+  [
+    check("fullName").not().isEmpty().withMessage("Full name is required"),
+    check("email").isEmail().withMessage("Valid email is required"),
+    check("phoneNumber").not().isEmpty().withMessage("Phone number is required")
+  ],
+  AuthController.updateProfile
+);
+
+router.put(
+  "/change-password/:userId",
+  authMiddleware.authenticate,
+  [
+    check("currentPassword").not().isEmpty().withMessage("Current password is required"),
+    check("newPassword").isLength({ min: 8 }).withMessage("New password must be at least 8 characters long")
+  ],
+  AuthController.changePassword
+);
+
+router.delete(
+  "/delete-profile/:userId",
+  authMiddleware.authenticate,
+  AuthController.deleteAccount
+);
+
 
 module.exports = router;

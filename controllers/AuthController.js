@@ -17,7 +17,6 @@ class AuthController {
     this.updateProfile = this.updateProfile.bind(this);
     this.changePassword = this.changePassword.bind(this);
     this.logout = this.logout.bind(this);
-    this.getSession = this.getSession.bind(this);
   }
 
   async register(req, res) {
@@ -152,8 +151,8 @@ class AuthController {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { fullName, email, phoneNumber } = req.body;
-    const userId = req.user._id;
+    const { fullName, email, phoneNumber, userId } = req.body;
+    let headShot = null;
 
     if (!validator.isEmail(email)) {
       return res.status(400).json({ message: "Invalid email format" });
@@ -161,6 +160,19 @@ class AuthController {
 
     if (!validator.isMobilePhone(phoneNumber)) {
       return res.status(400).json({ message: "Invalid phone number format" });
+    }
+
+    if (req.file) {
+      const uploadDir = path.join(__dirname, "..", "uploads");
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+
+      const relativeUploadPath = path.join("uploads", req.file.originalname);
+      const absoluteUploadPath = path.join(__dirname, "..", relativeUploadPath);
+
+      fs.writeFileSync(absoluteUploadPath, req.file.buffer);
+      headShot = relativeUploadPath;
     }
 
     try {
@@ -172,45 +184,98 @@ class AuthController {
       user.fullName = fullName;
       user.email = email;
       user.phoneNumber = phoneNumber;
+      if (headShot) user.headShot = headShot;
 
       await user.save();
-      return res.json(user);
+
+      const updatedUser = {
+        email: user.email,
+        fullName: user.fullName,
+        headShot: `${process.env.SERVER_URL}/${user.headShot}`,
+        phoneNumber: user.phoneNumber,
+      };
+
+      // send SMS notification
+
+      return res.json(updatedUser);
     } catch (err) {
-      console.error(err);
+      console.error('Error updating profile:', err);
       return res.status(500).json({ message: "Server error" });
     }
   }
+
 
   async changePassword(req, res) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
-
+  
     const { currentPassword, newPassword } = req.body;
-
+  
     try {
       const user = await User.findById(req.user._id);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-
+  
       const isMatch = await bcrypt.compare(currentPassword, user.password);
       if (!isMatch) {
-        return res
-          .status(400)
-          .json({ message: "Current password is incorrect" });
+        return res.status(400).json({ message: "Current password is incorrect" });
       }
 
+      if (
+        !validator.isStrongPassword(newPassword, {
+          minLength: 8,
+          minLowercase: 1,
+          minUppercase: 1,
+          minNumbers: 1,
+          minSymbols: 1,
+        })
+      ) {
+        return res.status(400).json({
+          message:
+            "Password must be at least 8 characters long and contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character",
+        });
+      }
+  
       user.password = await bcrypt.hash(newPassword, 10);
       await user.save();
 
-      return res.json({ message: "Password changed successfully" });
+      // send SMS notification
+  
+      // Invalidate the current session
+      res.clearCookie('refreshToken', { httpOnly: true, secure: true });
+      req.session.destroy((err) => {
+        if (err) {
+          return res.status(500).json({ message: "Failed to log out" });
+        }
+        return res.json({ message: "Password changed successfully, please log in again" });
+      });
     } catch (err) {
       console.error(err);
       return res.status(500).json({ message: "Server error" });
     }
   }
+
+  async deleteAccount(req, res) {
+    const userId = req.params.userId;
+
+    try {
+      const user = await User.findByIdAndDelete(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // send SMS notification
+
+      return res.json({ message: "Account deleted successfully" });
+    } catch (err) {
+      console.error('Error deleting account:', err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  }
+
 
   async logout(req, res) {
     req.session.destroy((err) => {
@@ -255,10 +320,6 @@ class AuthController {
       console.error('Token verification error:', err);
       res.status(401).json({ message: 'Token is not valid' });
     }
-  }
-
-  async getSession(req, res) {
-    res.json(req.session);
   }
 }
 

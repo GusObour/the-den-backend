@@ -43,6 +43,10 @@ const barberAvailabilitySchema = new mongoose.Schema({
         default: null,
         get: v => new Date(v).toISOString(),
         set: v => new Date(v).toISOString()
+    },
+    blocked: {
+        type: Boolean,
+        default: false
     }
 }, { versionKey: '__v' });
 
