@@ -3,47 +3,55 @@ const router = express.Router();
 const { google } = require('googleapis');
 const bookingController = require('../controllers/bookingController');
 const GoogleCalendarService = require('../services/GoogleCalendarService');
-const authMiddleware = require('../middleware/authMiddleware');
 
 router.get('/auth', (req, res) => {
     const state = JSON.stringify(req.query);
     const url = GoogleCalendarService.oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      scope: ['https://www.googleapis.com/auth/calendar.events'],
-      state: encodeURIComponent(state)
+        access_type: 'offline',
+        scope: ['https://www.googleapis.com/auth/calendar.events'],
+        state: encodeURIComponent(state)
     });
     res.redirect(url);
-  });
+});
 
-  router.get('/auth/callback', async (req, res) => {
-    const { code, state } = req.query;
-    try {
+router.get('/auth/callback', async (req, res) => {
+  const { code, state } = req.query;
+  try {
       const { tokens } = await GoogleCalendarService.oauth2Client.getToken(code);
-      const parsedState = JSON.parse(decodeURIComponent(state));
-      // Redirect back to the frontend with tokens and state (booking details)
-      res.redirect(`${process.env.CLIENT_URL}/google/auth/callback?tokens=${encodeURIComponent(JSON.stringify(tokens))}&state=${encodeURIComponent(JSON.stringify(parsedState))}`);
-    } catch (error) {
-      console.error('Error during Google OAuth callback:', error);
-      res.status(500).json({ message: 'Google OAuth callback failed' });
-    }
-  });
+      const decodedState = decodeURIComponent(state);
+      let appointmentData;
 
-  router.post('/complete-booking', authMiddleware.authenticate, async (req, res) => {
-    const { appointmentData, tokens } = req.body;
-  
-    try {
+      try {
+          // Parse the outer state object
+          const outerState = JSON.parse(decodedState);
+          // Parse the nested JSON string in the outer state
+          appointmentData = JSON.parse(outerState.state);
+          console.log(`Type of appointmentData: ${typeof appointmentData}`);
+          console.log(`Appointment data: ${JSON.stringify(appointmentData, null, 2)}`);
+      } catch (parseError) {
+          console.error('Error parsing state:', parseError);
+          throw new Error('Invalid state parameter');
+      }
+
+      // Ensure appointmentData is an object
+      if (typeof appointmentData !== 'object' || appointmentData === null) {
+          throw new Error('Invalid appointment data');
+      }
+
+      // Set credentials for Google Calendar API
       GoogleCalendarService.setCredentials(tokens);
-  
-      // The appointmentData is already an object, no need to parse it
+
+      // Create appointment directly
       const bookingResult = await bookingController.createAppointment(req, appointmentData, tokens);
-      console.log('bookingResult:', bookingResult);
-      res.json(bookingResult);
-    } catch (error) {
-      console.error('Error completing Google booking:', error);
-      res.status(500).json({ message: 'Error completing Google booking' });
-    }
-  });
-  
-  
-  
+
+      // Redirect back to the frontend with booking result
+      const resultState = encodeURIComponent(JSON.stringify({ bookingResult }));
+      res.redirect(`${process.env.CLIENT_URL}/booking/result?state=${resultState}`);
+  } catch (error) {
+      console.error('Error during Google OAuth callback and booking:', error);
+      const errorState = encodeURIComponent(JSON.stringify({ success: false, message: 'Google OAuth callback and booking failed' }));
+      res.redirect(`${process.env.CLIENT_URL}/booking/result?state=${errorState}`);
+  }
+});
+
 module.exports = router;

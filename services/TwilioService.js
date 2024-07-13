@@ -1,8 +1,8 @@
 const twilio = require("twilio");
 const moment = require("moment");
-const cron = require("node-cron");
-const RedisClient = require("./RedisClientService");
+const Redis = require("ioredis");
 const MessageQueue = require("./MessageQueueService");
+const cron = require("node-cron");
 
 class TwilioService {
   constructor() {
@@ -10,18 +10,20 @@ class TwilioService {
       process.env.TWILIO_ACCOUNT_SID,
       process.env.TWILIO_AUTH_TOKEN
     );
-    this.redisClient;
-    this.messageQueue = new MessageQueue("smsQueue", {
-      redis: {
-        host: process.env.REDIS_HOST,
-        port: process.env.REDIS_PORT,
-        password: process.env.REDIS_PASSWORD
-      }
+    this.redisClient = new Redis({
+      host: process.env.REDIS_HOST,
+      port: process.env.REDIS_PORT,
+      password: process.env.REDIS_PASSWORD,
     });
-
     this.phoneNumber = process.env.TWILIO_PHONE_NUMBER;
-    this.rateLimitWindow = 60 * 60;
-    this.rateLimitCount = 100;
+    this.rateLimitWindow = 60 * 60; // 1 hour
+    this.rateLimitCount = 100; // 100 messages per hour per number
+
+    this.messageQueue = new MessageQueue("smsQueue", {
+      host: process.env.REDIS_HOST,
+      port: process.env.REDIS_PORT,
+      password: process.env.REDIS_PASSWORD
+    });
 
     this.setupQueue();
     this.scheduleFailedJobsRetry();
@@ -73,33 +75,42 @@ class TwilioService {
   }
 
   async processSMS(to, body) {
-    this.redisClient = RedisClient.getClient();
-    const key = `sms_rate_limit:${to}`;
-    const currentTimestamp = moment().unix();
+    try {
+      const currentTimestamp = moment().unix();
+      const key = `sms_rate_limit:${to}`;
 
-    const messageCount = await this.redisClient.zcount(
-      key,
-      currentTimestamp - this.rateLimitWindow,
-      currentTimestamp
-    );
+      // Check the number of messages sent in the rate limit window
+      const messageCount = await this.redisClient.zcount(
+        key,
+        currentTimestamp - this.rateLimitWindow,
+        currentTimestamp
+      );
 
-    if (messageCount >= this.rateLimitCount) {
-      console.error(`Rate limit exceeded for ${to}. Message not sent.`);
-      throw new Error(`Rate limit exceeded for ${to}`);
+      if (messageCount >= this.rateLimitCount) {
+        console.error(`Rate limit exceeded for ${to}. Message not sent.`);
+        throw new Error(`Rate limit exceeded for ${to}`);
+      }
+
+      // Send the SMS
+      console.log(`Sending SMS to: ${to}, Body: ${body}`);
+      const message = await this.client.messages.create({
+        body,
+        from: this.phoneNumber,
+        to,
+      });
+
+      // create better error handling for Twilio
+
+      // Log the message sending in Redis
+      await this.redisClient.zadd(key, currentTimestamp, message.sid);
+      await this.redisClient.expire(key, this.rateLimitWindow);
+
+      console.log("SMS sent successfully:", message.sid);
+      return message;
+    } catch (error) {
+      console.error("Error sending SMS:", error);
+      throw error;
     }
-
-    console.log(`Sending SMS to: ${to}, Body: ${body}`);
-    const message = await this.client.messages.create({
-      body,
-      from: this.phoneNumber,
-      to,
-    });
-
-    await this.redisClient.zadd(key, currentTimestamp, message.sid);
-    await this.redisClient.expire(key, this.rateLimitWindow);
-
-    console.log("SMS sent successfully:", message.sid);
-    return message;
   }
 }
 

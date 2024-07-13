@@ -1,4 +1,5 @@
 const { google } = require('googleapis');
+const momentTz = require('moment-timezone');
 
 class GoogleCalendarService {
     constructor() {
@@ -10,24 +11,27 @@ class GoogleCalendarService {
     }
 
     async createEvent({ summary, description, start, end, attendees }) {
-        try {
-            const event = {
-                summary,
-                description,
-                start: { dateTime: start },
-                end: { dateTime: end },
-                attendees: attendees.map(email => ({ email })),
-            };
-            const response = await this.calendar.events.insert({
-                calendarId: 'primary',
-                resource: event
-            });
-            return response.data;
-        } catch (error) {
-            console.error('Error creating Google Calendar event:', error);
-            throw error;
-        }
-    }
+        const event = {
+          summary,
+          description,
+          start: {
+            dateTime: start,
+            timeZone: momentTz.tz.guess(),
+          },
+          end: {
+            dateTime: end,
+            timeZone: momentTz.tz.guess(),
+          },
+          attendees: attendees.map(email => ({ email })),
+        };
+    
+        return await this.calendar.events.insert({
+          auth: this.oauth2Client,
+          calendarId: 'primary',
+          resource: event,
+        });
+      }
+    
 
     setCredentials(tokens) {
         this.oauth2Client.setCredentials(tokens);

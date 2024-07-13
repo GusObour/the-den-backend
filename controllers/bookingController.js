@@ -9,6 +9,8 @@ const GoogleCalendarService = require('../services/GoogleCalendarService');
 const { User, Barber } = require("../models/User");
 const Service = require("../models/Service");
 const moment = require("moment");
+const moment_TimeZone = require('moment-timezone');
+const { formatDateTime } = require('../utils/dateFormatter');
 
 class BookingController {
   async createAppointment(req, state, tokens) {
@@ -69,34 +71,50 @@ class BookingController {
           Service.findById(serviceId).session(session)
         ]);
 
+        const startTime = formatDateTime(start, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: true });
+        const endTime = formatDateTime(end, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: true });
+
+        const newDate = formatDateTime(date, { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC', hour12: true });
+
         // Use Google Calendar Service
         GoogleCalendarService.setCredentials(tokens);
         const event = await GoogleCalendarService.createEvent({
-          summary: 'Appointment Booking',
-          description: `Service: ${service.name}\nDetails about the appointment`,
-          start: new Date(start).toISOString(),
-          end: new Date(end).toISOString(),
-          attendees: [barberEmail, userEmail],
+          summary: `Appointment for ${user.fullName} with ${barber.fullName}`,
+          description: `Service: ${service.name}\nDetails about the appointment: ${service.description}`,
+          start: start,
+          end: end,
+          attendees: [barber.email, user.email],
         });
+
+        const serviceDetails = {
+          name: service.name,
+          description: service.description,
+        };
 
         // Include the calendar link in the email
         const appointmentDetails = {
-          date,
-          start,
-          end,
+          newDate,
+          startTime,
+          endTime,
           barber: barber.fullName,
           user: user.fullName,
           service: serviceDetails,
-          calendarLink: event.htmlLink,
+          calendarLink: event.data.htmlLink,
         };
 
+        // Send booking confirmation email to the barber and client
         await EmailService.sendBookingEmail(barber.email, user.email, appointmentDetails);
 
+
+        // send SMS to the client 
+        const message = `Your appointment with ${barber.fullName} for ${service.name} is confirmed on ${newDate} from ${startTime} to ${endTime}.`;
+        await TwilioService.sendSMS(user.phoneNumber, message);
+        
+        
         await session.commitTransaction();
         return ({
           success: true,
           message: "Appointment booked successfully",
-          appointment,
         });
       } catch (error) {
         if (error.code === 112 && attempt < MAX_RETRIES - 1) {

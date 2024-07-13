@@ -13,6 +13,8 @@ const UnlockExpiredSlotsJob = require('./jobs/UnlockExpiredSlotsJob');
 const UpdateExpiredAppointmentsJob = require('./jobs/UpdateExpiredAppointmentsJob');
 const GenerateWeeklyInvoicesJob = require('./jobs/GenerateWeeklyInvoicesJob');
 const UpdateWeeklyAvailabilityJob = require('./jobs/UpdateWeeklyAvailabilityJob');
+const NotifyOneDayBeforeJob = require('./jobs/NotifyOneDayBeforeJob');
+const NotifyOneHourBeforeJob = require('./jobs/NotifyOneHourBeforeJob');
 
 const authRoutes = require("./routes/authRoutes");
 const servicesRoutes = require("./routes/servicesRoutes");
@@ -105,13 +107,21 @@ const initServer = async () => {
             },
             userRoutes
         );
-        app.use('/google', googleAuthRoutes);
+        app.use(
+            '/google',
+            (req, res, next) => {
+                req.redisClient = redisInstance.getClient();
+                next();
+            },
+            googleAuthRoutes);
 
         const jobScheduler = new JobSchedulerService(redisInstance.getClient());
         jobScheduler.registerJob('*/5 * * * *', new UnlockExpiredSlotsJob(redisInstance.getClient()));
         jobScheduler.registerJob('*/5 * * * *', new UpdateExpiredAppointmentsJob(redisInstance.getClient()));
         jobScheduler.registerJob('0 0 * * 0', new GenerateWeeklyInvoicesJob(redisInstance.getClient()));
         jobScheduler.registerJob('0 0 * * 0', new UpdateWeeklyAvailabilityJob(redisInstance.getClient()));
+        jobScheduler.registerJob('0 * * * *', new NotifyOneDayBeforeJob(redisInstance.getClient()));
+        jobScheduler.registerJob('0 * * * *', new NotifyOneHourBeforeJob(redisInstance.getClient()));
         jobScheduler.start();
 
         const PORT = process.env.PORT || 5000;
