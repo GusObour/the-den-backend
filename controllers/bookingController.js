@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const { ObjectId } = mongoose.Types;
 const Appointment = require("../models/Appointment");
 const BarberAvailability = require("../models/BarberAvailability");
 const redisClientInstance = require("../services/RedisClientService");
@@ -25,13 +24,13 @@ class BookingController {
         session.startTransaction();
 
         const availability = await BarberAvailability.findOne({
-          barber: ObjectId(barberId),
+          barber: new ObjectId(barberId),
           date: new Date(date),
           start: new Date(start),
           end: new Date(end),
           appointment: null,
           locked: true,
-          lockedBy: ObjectId(userId),
+          lockedBy: new ObjectId(userId),
           lockExpiration: { $gte: new Date() },
         }).session(session);
 
@@ -41,9 +40,9 @@ class BookingController {
         }
 
         const appointment = new Appointment({
-          user: ObjectId(userId),
-          barber: ObjectId(barberId),
-          service: ObjectId(serviceId),
+          user: new ObjectId(userId),
+          barber: new ObjectId(barberId),
+          service: new ObjectId(serviceId),
           status: "Booked",
           barberAvailability: availability._id,
         });

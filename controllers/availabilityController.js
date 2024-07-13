@@ -1,6 +1,5 @@
 const Availability = require('../models/BarberAvailability');
 const mongoose = require('mongoose');
-const { ObjectId } = mongoose.Types;
 const { Barber } = require('../models/User');
 const moment = require('moment');
 const { validationResult } = require("express-validator");
@@ -41,7 +40,7 @@ class AvailabilityController {
       const availability = await Availability.aggregate([
         {
           $match: {
-            barber: ObjectId(barberId),
+            barber: new ObjectId(barberId),
             date: new Date(date),
             $or: [
               { blocked: { $exists: false } },
@@ -57,7 +56,7 @@ class AvailabilityController {
                 {
                   $or: [
                     { $eq: ['$locked', false] },
-                    { $eq: ['$lockedBy', ObjectId(userId)] }
+                    { $eq: ['$lockedBy', new ObjectId(userId)] }
                   ]
                 }
               ]
@@ -87,7 +86,7 @@ class AvailabilityController {
 
     try {
       const availableDates = await Availability.aggregate([
-        { $match: { barber: ObjectId(barberId) } },
+        { $match: { barber: new ObjectId(barberId) } },
         { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } } } },
         { $project: { _id: 0, date: "$_id" } },
         { $sort: { date: 1 } }
