@@ -4,8 +4,9 @@ FROM nixos/nix
 # Install a specific Python version (e.g., Python 3.10)
 RUN nix-env -iA nixpkgs.python3_10
 
-# Ensure the correct Python version is used
-ENV PYTHON=/nix/store/$(nix-env -q --out-path python3_10 | awk '{print $2}')/bin/python3
+# Set the correct Python version using a shell command
+RUN export PYTHON=$(nix-env -q --out-path python3_10 | awk '{print $2}')/bin/python3 && \
+    echo "export PYTHON=$PYTHON" >> /etc/profile
 
 # Install Node.js and other dependencies
 RUN nix-env -iA nixpkgs.nodejs-14_x
