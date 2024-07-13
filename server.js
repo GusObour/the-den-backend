@@ -9,10 +9,10 @@ const { initializeWebSocketServer } = require("./services/WebSocketService");
 const connectDB = require("./config/db");
 const RedisClient = require("./services/RedisClientService");
 const JobSchedulerService = require('./services/JobSchedulerService');
-const UnlockExpiredSlotsJob = require('./jobs/UnlockExpiredSlotsJob');
-const UpdateExpiredAppointmentsJob = require('./jobs/UpdateExpiredAppointmentsJob');
-const GenerateWeeklyInvoicesJob = require('./jobs/GenerateWeeklyInvoicesJob');
-const UpdateWeeklyAvailabilityJob = require('./jobs/UpdateWeeklyAvailabilityJob');
+const UnlockExpiredSlotsJob = require('./Jobs/UnlockExpiredSlotsJob');
+const UpdateExpiredAppointmentsJob = require('./Jobs/UpdateExpiredAppointmentsJob');
+const GenerateWeeklyInvoicesJob = require('./Jobs/GenerateWeeklyInvoicesJob');
+const UpdateWeeklyAvailabilityJob = require('./Jobs/UpdateWeeklyAvailabilityJob');
 const NotifyOneDayBeforeJob = require('./Jobs/NotifyOneDayBeforeJob');
 const NotifyOneHourBeforeJob = require('./Jobs/NotifyOneHourBeforeJob');
 
