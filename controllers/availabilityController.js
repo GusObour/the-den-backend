@@ -87,7 +87,7 @@ class AvailabilityController {
 
     try {
       const availableDates = await Availability.aggregate([
-        { $match: { barber: mongoose.Types.ObjectId(barberId) } },
+        { $match: { barber: ObjectId(barberId) } },
         { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } } } },
         { $project: { _id: 0, date: "$_id" } },
         { $sort: { date: 1 } }
