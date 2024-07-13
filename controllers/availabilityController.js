@@ -1,5 +1,6 @@
 const Availability = require('../models/BarberAvailability');
 const mongoose = require('mongoose');
+const ObjectId = mongoose.Types.ObjectId;
 const { Barber } = require('../models/User');
 const moment = require('moment');
 const { validationResult } = require("express-validator");

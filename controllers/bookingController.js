@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const ObjectId = mongoose.Types.ObjectId;
 const Appointment = require("../models/Appointment");
 const BarberAvailability = require("../models/BarberAvailability");
 const redisClientInstance = require("../services/RedisClientService");
