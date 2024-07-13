@@ -13,8 +13,8 @@ const UnlockExpiredSlotsJob = require('./jobs/UnlockExpiredSlotsJob');
 const UpdateExpiredAppointmentsJob = require('./jobs/UpdateExpiredAppointmentsJob');
 const GenerateWeeklyInvoicesJob = require('./jobs/GenerateWeeklyInvoicesJob');
 const UpdateWeeklyAvailabilityJob = require('./jobs/UpdateWeeklyAvailabilityJob');
-const NotifyOneDayBeforeJob = require('./jobs/NotifyOneDayBeforeJob');
-const NotifyOneHourBeforeJob = require('./jobs/NotifyOneHourBeforeJob');
+const NotifyOneDayBeforeJob = require('./Jobs/NotifyOneDayBeforeJob');
+const NotifyOneHourBeforeJob = require('./Jobs/NotifyOneHourBeforeJob');
 
 const authRoutes = require("./routes/authRoutes");
 const servicesRoutes = require("./routes/servicesRoutes");
