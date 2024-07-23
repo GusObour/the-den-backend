@@ -13,9 +13,9 @@ const moment_TimeZone = require('moment-timezone');
 const { formatDateTime } = require('../utils/dateFormatter');
 
 class BookingController {
-  async createAppointment(req, state, tokens) {
+  async createAppointment(req) {
     const redisClient = req.redisClient;
-    const { userId, barberId, serviceId, date, start, end, } = state;
+    const { userId, barberId, serviceId, date, start, end, } = req.body.appointmentData;
     const session = await mongoose.startSession();
 
     const MAX_RETRIES = 5
@@ -77,14 +77,14 @@ class BookingController {
         const newDate = formatDateTime(date, { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC', hour12: true });
 
         // Use Google Calendar Service
-        GoogleCalendarService.setCredentials(tokens);
-        const event = await GoogleCalendarService.createEvent({
-          summary: `Appointment for ${user.fullName} with ${barber.fullName}`,
-          description: `Service: ${service.name}\nDetails about the appointment: ${service.description}`,
-          start: start,
-          end: end,
-          attendees: [barber.email, user.email],
-        });
+        // GoogleCalendarService.setCredentials(tokens);
+        // const event = await GoogleCalendarService.createEvent({
+        //   summary: `Appointment for ${user.fullName} with ${barber.fullName}`,
+        //   description: `Service: ${service.name}\nDetails about the appointment: ${service.description}`,
+        //   start: start,
+        //   end: end,
+        //   attendees: [barber.email, user.email],
+        // });
 
         const serviceDetails = {
           name: service.name,
@@ -99,7 +99,7 @@ class BookingController {
           barber: barber.fullName,
           user: user.fullName,
           service: serviceDetails,
-          calendarLink: event.data.htmlLink,
+          // calendarLink: event.data.htmlLink,
         };
 
         // Send booking confirmation email to the barber and client
@@ -107,10 +107,10 @@ class BookingController {
 
 
         // send SMS to the client 
-        const message = `Your appointment with ${barber.fullName} for ${service.name} is confirmed on ${newDate} from ${startTime} to ${endTime}.`;
+        const message = `The Den: Your appointment with ${barber.fullName} for ${service.name} is confirmed on ${newDate} from ${startTime} to ${endTime}.`;
         await TwilioService.sendSMS(user.phoneNumber, message);
-        
-        
+
+
         await session.commitTransaction();
         return ({
           success: true,
@@ -157,7 +157,7 @@ class BookingController {
       { $set: { locked: false, lockExpiration: null, lockedBy: null } }
     );
 
-    console.log(`unlocked ${results.nModified} expired slots`);
+    console.log(`unlocked ${results.modifiedCount} expired slots`);
 
     // Delete caches for the relevant barbers
     const uniqueBarberIds = [...new Set(barberIds)];
@@ -278,50 +278,43 @@ class BookingController {
     }
   }
 
-
-
-
-
   async updateExpiredAppointments(redisClient) {
     const now = new Date();
 
     try {
-      // Fetch barber availabilities that have expired
-      const barberAvailabilities = await BarberAvailability.find(
-        { end: { $lt: now } },
-        "_id barber"
-      );
+      // Fetch expired barber availabilities
+      const expiredAvailabilityIds = (await BarberAvailability.find({ end: { $lt: now } }, "_id")).map(availability => availability._id);
 
-      const availabilityIds = barberAvailabilities.map(availability => availability._id.toString());
-      const barberIds = barberAvailabilities.map(availability => availability.barber.toString());
+      // Fetch appointments with expired barber availabilities and populate necessary fields
+      const appointments = await Appointment.find({
+        status: "Booked",
+        barberAvailability: { $in: expiredAvailabilityIds }
+      }).populate("barberAvailability", "barber").populate("user", "_id");
+
+      const appointmentIds = appointments.map(appointment => appointment._id);
+      const barberIds = [...new Set(appointments.map(appointment => appointment.barberAvailability.barber.toString()))];
+      const userIds = [...new Set(appointments.map(appointment => appointment.user._id.toString()))];
 
       // Update expired appointments
       const results = await Appointment.updateMany(
-        { status: "Booked", barberAvailability: { $in: availabilityIds } },
+        { _id: { $in: appointmentIds } },
         { $set: { status: "Completed" } }
       );
 
-      console.log(`Updated ${results.nModified} expired appointments`);
+      console.log(`Updated ${results.modifiedCount} expired appointments`);
 
-      // Delete caches for the relevant barbers and availabilities
-      const uniqueBarberIds = [...new Set(barberIds)];
-
-      for (const barberId of uniqueBarberIds) {
-        const cacheKey = `barberAvailability:${barberId}`;
-        await redisClient.del(cacheKey);
-        console.log(`Cache cleared for barber ID: ${barberId}`);
-      }
-
-      for (const availabilityId of availabilityIds) {
-        const cacheKey = `availability:${availabilityId}`;
-        await redisClient.del(cacheKey);
-        console.log(`Cache cleared for availability ID: ${availabilityId}`);
-      }
+      // Delete related Redis keys in parallel
+      await Promise.all([
+        ...barberIds.map(barberId => redisClient.del(`barberAvailability:${barberId}`)),
+        ...barberIds.map(barberId => redisClient.del(`barberAppointments:${barberId}`)),
+        ...userIds.map(userId => redisClient.del(`userAppointments:${userId}`))
+      ]);
 
     } catch (error) {
       console.error("Error updating expired appointments:", error);
     }
   }
+
 
 
   async completeAppointment(appointmentId, userId, req) {
@@ -352,8 +345,37 @@ class BookingController {
         return { success: false, message: "Unauthorized to complete appointment" };
       }
 
+
+      const startTime = formatDateTime(appointment.barberAvailability.start, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: true });
+      const endTime = formatDateTime(appointment.barberAvailability.end, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: true });
+
+      const newDate = formatDateTime(appointment.barberAvailability.date, { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC', hour12: true });
+
       appointment.status = "Completed";
       await appointment.save({ session });
+
+      const serviceDetails = {
+        name: appointment.service.name,
+        description: appointment.service.description,
+      };
+
+      const appointmentDetails = {
+        newDate,
+        startTime,
+        endTime,
+        barber: appointment.barber.fullName,
+        user: appointment.user.fullName,
+        service: serviceDetails,
+      };
+
+
+      // Send booking confirmation email to the barber and client
+      await EmailService.sendCompletionEmail(appointment.barber.email, appointment.user.email, appointmentDetails);
+
+
+      // send SMS to the client 
+      const message = `The Den: Thank you ${appointment.user.fullName} for visiting us. Your appointment with ${appointment.barber.fullName} for ${appointment.service.name} on ${newDate} from ${startTime} to ${endTime} has been completed.`;
+      await TwilioService.sendSMS(appointment.user.phoneNumber, message);
 
       await redisClient.del(`barberAppointments:${userId}`);
       await redisClient.del(`userAppointments:${appointment.user._id}`);
@@ -380,8 +402,12 @@ class BookingController {
 
     try {
       const appointment = await Appointment.findById(appointmentId)
+        .populate("user")
+        .populate("barber")
+        .populate("service")
         .populate("barberAvailability")
         .session(session);
+
       if (!appointment) {
         await session.abortTransaction();
         return { success: false, message: "Appointment not found" };
@@ -403,11 +429,41 @@ class BookingController {
         appointment.status = "Cancelled";
         await appointment.save({ session });
       } else {
-        await appointment.remove({ session });
+        await appointment.deleteOne({ session });
         barberAvailability.appointment = null;
         barberAvailability.lockedBy = null;
         await barberAvailability.save({ session });
       }
+
+
+      const startTime = formatDateTime(appointment.barberAvailability.start, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: true });
+      const endTime = formatDateTime(appointment.barberAvailability.end, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: true });
+
+      const newDate = formatDateTime(appointment.barberAvailability.date, { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC', hour12: true });
+
+      const serviceDetails = {
+        name: appointment.service.name,
+        description: appointment.service.description,
+      };
+
+      const appointmentDetails = {
+        newDate,
+        startTime,
+        endTime,
+        barber: appointment.barber.fullName,
+        user: appointment.user.fullName,
+        service: serviceDetails,
+      };
+
+
+      // Send booking confirmation email to the barber and client
+      await EmailService.sendCancellationEmail(appointment.barber.email, appointment.user.email, appointmentDetails);
+
+
+      // send SMS to the client 
+      const message = `The Den: Your appointment with ${appointment.barber.fullName} for ${appointment.service.name} on ${newDate} from ${startTime} to ${endTime} has been canceled.`;
+      await TwilioService.sendSMS(appointment.user.phoneNumber, message);
+
 
       await redisClient.del(`barberAppointments:${appointment.barber._id}`);
       await redisClient.del(`userAppointments:${appointment.user._id}`);

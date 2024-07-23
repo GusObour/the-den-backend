@@ -4,6 +4,17 @@ const BookingController = require('./bookingController');
 const AvailabilityController = require('./availabilityController');
 
 class UserController{
+    async completeAppointment(req, res){
+        const errors = validationResult(req.body);
+        if(!errors.isEmpty()){
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const bookingResult = await BookingController.createAppointment(req);
+
+        res.status(200).json({ success: bookingResult.success, message: bookingResult.message });
+    }
+
     async getUserAppointments(req, res){
         const errors = validationResult(req);
         if (!errors.isEmpty()) {

@@ -131,7 +131,7 @@ class AuthController {
         phoneNumber: user.phoneNumber,
         fullName: user.fullName,
         email: user.email,
-        headShot: `${process.env.SERVER_URL}/${user.headShot}`,
+        headShot: `${process.env.SERVER_URL}${user.headShot}`,
       }, process.env.SESSION_SECRET, { expiresIn: "1h" });
   
       const refreshToken = jwt.sign({ userId: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: "7d" });
