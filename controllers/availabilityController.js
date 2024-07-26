@@ -155,32 +155,47 @@ class AvailabilityController {
     try {
       const barbers = await Barber.find();
       const today = moment().utc();
-
+      const monday = today.day() === 1 ? today : today.clone().day(1); // Start from Monday
+  
       for (const barber of barbers) {
         for (let j = 0; j < 7; j++) {
-          const thisDay = today.clone().add(j, 'days').startOf('day');
-
-          for (let i = 9; i <= 16; i++) {
-            let start = thisDay.clone().add(i, 'hours');
-            let end = start.clone().add(1, 'hours');
-
+          const thisDay = monday.clone().add(j, 'days').startOf('day');
+  
+          let startHour, endHour;
+          if (thisDay.day() >= 1 && thisDay.day() <= 5) {
+            // Monday to Friday: 10am - 5pm
+            startHour = 10;
+            endHour = 17;
+          } else if (thisDay.day() === 6) {
+            // Saturday: 9am - 2pm
+            startHour = 9;
+            endHour = 14;
+          } else {
+            // Sunday: No availability
+            continue;
+          }
+  
+          for (let hour = startHour; hour < endHour; hour++) {
+            let start = thisDay.clone().add(hour, 'hours');
+            let end = start.clone().add(1, 'hour');
+  
             const availabilityToAdd = new Availability({
               barber: barber._id,
               date: thisDay.toDate(),
               start: start.toDate(),
               end: end.toDate()
             });
-
+  
             await availabilityToAdd.save();
           }
         }
-
+  
         // Clear cache for the barber
         const cacheKey = `barberAvailability:${barber._id}`;
         await redisClient.del(cacheKey);
         console.log(`Cache cleared for barber ID: ${barber._id}`);
       }
-
+  
       console.log('Weekly availability added for all barbers.');
     } catch (error) {
       console.error('Failed to add new weekly availability:', error);

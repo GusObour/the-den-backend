@@ -9,7 +9,7 @@ const router = express.Router();
 
 // Registration Route
 router.post(
-  '/register',upload.single('headShot'),
+  '/register', upload.single('headShot'),
   [
     check('fullName').not().isEmpty().withMessage('Full name is required'),
     check('email').isEmail().withMessage('Invalid email format'),
@@ -68,6 +68,16 @@ router.put(
   ],
   AuthController.updateProfile
 );
+
+router.post("/request-password-reset", [
+  check("email").isEmail().withMessage("Valid email is required")
+], AuthController.requestPasswordReset);
+
+router.post("/reset-password", [
+  check("token").not().isEmpty().withMessage("Reset token is required"),
+  check("userId").not().isEmpty().withMessage("User ID is required"),
+  check("password").isLength({ min: 8 }).withMessage("New password must be at least 8 characters long")
+], AuthController.resetPassword);
 
 router.put(
   "/change-password/:userId",

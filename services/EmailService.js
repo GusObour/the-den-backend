@@ -194,6 +194,57 @@ class EmailService {
             console.error('Error sending cancellation email:', error);
         }
     }    
+
+    async sendRequestPasswordResetEmail(email, resetDetails) {
+        const { resetUrl } = resetDetails;
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'Password Reset Request',
+            html: `
+                <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <img src='https://the-den-backend-production.up.railway.app/uploads/TheDen.jpeg' alt="The Den" style="max-width: 150px;">
+                    </div>
+                    <h2 style="color: #375C95; text-align: center;">Password Reset</h2>
+                    <p style="font-size: 16px;">You have requested a password reset. Click the link below to reset your password:</p>
+                    <a href="${resetUrl}" style="display: block; text-align: center; margin: 20px 0; text-decoration: none; color: #fff; background-color: #375C95; padding: 10px 20px; border-radius: 5px;">Reset Password</a>
+                    <p style="text-align: center; font-size: 14px; color: #888;">If you did not request a password reset, please ignore this email.</p>
+                </div>
+            `,
+        };
+    
+        try {
+            await this.transporter.sendMail(mailOptions);
+            console.log('Password reset email sent to:', email);
+        } catch (error) {
+            console.error('Error sending password reset email:', error);
+        }
+    }
+
+    async sendPasswordResetEmail(email) {
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'Password Reset',
+            html: `
+                <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <img src='https://the-den-backend-production.up.railway.app/uploads/TheDen.jpeg' alt="The Den" style="max-width: 150px;">
+                    </div>
+                    <h2 style="color: #375C95; text-align: center;">Your password has been reset</h2>
+                    <p style="font-size: 16px;">If you did not reset your password, please contact us immediately. At <a href="mailto:theden@theden.app"> theden@theden.app </a> </p>
+                    <p style="text-align: center; font-size: 14px; color: #888;">Thank you for using our service!</p>
+                    </div>
+            `,
+        }
+        try {
+            await this.transporter.sendMail(mailOptions);
+            console.log('Password reset email sent to:', email);
+        } catch (error) {
+            console.error('Error sending password reset email:', error);
+        }
+    }
 }
 
 module.exports = new EmailService();
