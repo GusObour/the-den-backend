@@ -1,5 +1,6 @@
 // server.js
 const express = require("express");
+const os = require('os');
 const cors = require("cors");
 require("dotenv").config();
 const path = require("path");
@@ -124,9 +125,24 @@ const initServer = async () => {
         jobScheduler.registerJob('0 * * * *', new NotifyOneHourBeforeJob(redisInstance.getClient()));
         jobScheduler.start();
 
+        const getServerIPAddress = () => {
+            const networkInterfaces = os.networkInterfaces();
+            for (const interfaceName in networkInterfaces) {
+              for (const netInfo of networkInterfaces[interfaceName]) {
+                // Check for IPv4 and non-internal (i.e., not localhost) IPs
+                if (netInfo.family === 'IPv4' && !netInfo.internal) {
+                  return netInfo.address;
+                }
+              }
+            }
+            return 'IP not found';
+          };
+
         const PORT = process.env.PORT || 5000;
         const server = app.listen(PORT, () => {
-            logger.info(`Server running on port ${PORT}`);
+            const ipAddress = getServerIPAddress();
+            console.log(`Server is running on http://${ipAddress}:${PORT}`);
+          
         });
 
         initializeWebSocketServer(server);
