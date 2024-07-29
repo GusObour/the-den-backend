@@ -75,7 +75,11 @@ const initServer = async () => {
 
         app.use("/uploads", express.static(path.join(__dirname, "uploads")));
         app.use("/auth", authRoutes);
-        app.use("/services", servicesRoutes);
+        app.use("/services", 
+            (req,res, next) =>{
+                req.redisClient = redisInstance.getClient();
+                next();
+            },servicesRoutes);
         app.use(
             "/barbers",
             (req, res, next) => {
